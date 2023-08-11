@@ -417,6 +417,8 @@ func (s *serviceData) startInternal() error {
 	done := make(chan struct{})
 	cmd := s.cmd
 	go func() {
+		logger.Debugf("TODO wait-command goroutine start")
+		defer logger.Debugf("TODO wait-command goroutine done")
 		exitCode, waitErr := reaper.WaitCommand(cmd)
 		if waitErr != nil {
 			logger.Noticef("Cannot wait for service %q: %v", serviceName, waitErr)

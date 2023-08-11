@@ -131,11 +131,15 @@ func reapOnce() {
 
 			// If there's a WaitCommand waiting for this PID, send it the exit code.
 			mutex.Lock()
+			logger.Debugf("TODO reapOnce: got mutex lock")
 			ch := pids[pid]
 			mutex.Unlock()
 
 			if ch != nil {
+				logger.Debugf("TODO reapOnce: got exitCode channel (exitCode %d)", exitCode)
 				ch <- exitCode
+			} else {
+				logger.Debugf("TODO reapOnce: unexpected nil exitCode channel!!!")
 			}
 
 		case unix.ECHILD:
@@ -173,7 +177,7 @@ func StartCommand(cmd *exec.Cmd) error {
 			case ch <- -1:
 			default:
 			}
-			logger.Noticef("internal error: new PID %d observed while still being tracked", cmd.Process.Pid)
+			logger.Noticef("Internal error: new PID %d observed while still being tracked", cmd.Process.Pid)
 		}
 		// Channel is 1-buffered so the send in reapOnce never blocks, if for
 		// some reason someone forgets to call WaitCommand.
@@ -186,6 +190,8 @@ func StartCommand(cmd *exec.Cmd) error {
 // StartCommand) to finish and returns its exit code. Unlike cmd.Wait,
 // WaitCommand doesn't return an error for nonzero exit codes.
 func WaitCommand(cmd *exec.Cmd) (int, error) {
+	logger.Debugf("TODO reaper.WaitCommand: start")
+	defer logger.Debugf("TODO reaper.WaitCommand: done")
 	mutex.Lock()
 	if !started {
 		mutex.Unlock()
@@ -200,7 +206,9 @@ func WaitCommand(cmd *exec.Cmd) (int, error) {
 	mutex.Unlock()
 
 	// Wait for reaper to reap this PID and send us the exit code.
+	logger.Debugf("TODO reaper.WaitCommand: waiting on exitCode channel")
 	exitCode := <-ch
+	logger.Debugf("TODO reaper.WaitCommand: got exitCode %d", exitCode)
 
 	// Remove PID from waits map once we've received exit code from reaper.
 	mutex.Lock()
@@ -211,6 +219,7 @@ func WaitCommand(cmd *exec.Cmd) (int, error) {
 	// no child processes"), because the reaper is already waiting for all
 	// PIDs. This is not pretty, but we need to call cmd.Wait to clean up
 	// goroutines and file descriptors.
+	logger.Debugf("TODO reaper.WaitCommand: waiting on cmd.Wait()")
 	err := cmd.Wait()
 	switch err := err.(type) {
 	case nil:
