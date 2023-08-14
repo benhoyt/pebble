@@ -21,6 +21,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"sync"
+	"time"
 
 	"golang.org/x/sys/unix"
 	"gopkg.in/tomb.v2"
@@ -220,6 +221,19 @@ func WaitCommand(cmd *exec.Cmd) (int, error) {
 	// PIDs. This is not pretty, but we need to call cmd.Wait to clean up
 	// goroutines and file descriptors.
 	logger.Debugf("TODO reaper.WaitCommand: waiting on cmd.Wait()")
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		for {
+			select {
+			case <-ticker.C:
+				logger.Debugf("TODO reaper.WaitCommand ticker: %s", cmd.ProcessState.String())
+			case <-done:
+				return
+			}
+		}
+	}()
 	err := cmd.Wait()
 	switch err := err.(type) {
 	case nil:
