@@ -339,6 +339,8 @@ func (s *serviceData) startInternal() error {
 	}
 	args := append(base, extra...)
 	s.cmd = exec.Command(args[0], args[1:]...)
+	s.cmd.WaitDelay = 1500 * time.Millisecond
+	logger.Debugf("TODO startInternal STARTING WITH WaitDelay %v", s.cmd.WaitDelay)
 	s.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	// Copy environment to avoid updating original.
