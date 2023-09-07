@@ -45,19 +45,6 @@ func FakeTaskTimes(t *Task, spawnTime, readyTime time.Time) {
 	t.readyTime = readyTime
 }
 
-func (s *State) AddWarning(message string, lastAdded, lastShown time.Time, expireAfter, repeatAfter time.Duration) {
-	s.addWarning(Warning{
-		message:     message,
-		lastShown:   lastShown,
-		expireAfter: expireAfter,
-		repeatAfter: repeatAfter,
-	}, lastAdded)
-}
-
-func (w Warning) LastAdded() time.Time {
-	return w.lastAdded
-}
-
 func (t *Task) AccumulateDoingTime(duration time.Duration) {
 	t.accumulateDoingTime(duration)
 }
@@ -65,14 +52,6 @@ func (t *Task) AccumulateDoingTime(duration time.Duration) {
 func (t *Task) AccumulateUndoingTime(duration time.Duration) {
 	t.accumulateUndoingTime(duration)
 }
-
-var (
-	ErrNoWarningMessage     = errNoWarningMessage
-	ErrBadWarningMessage    = errBadWarningMessage
-	ErrNoWarningFirstAdded  = errNoWarningFirstAdded
-	ErrNoWarningExpireAfter = errNoWarningExpireAfter
-	ErrNoWarningRepeatAfter = errNoWarningRepeatAfter
-)
 
 func (s *State) AddNoticeWithTime(now time.Time, noticeType NoticeType, key string, data map[string]string, repeatAfter time.Duration) string {
 	return s.addNoticeWithTime(now, noticeType, key, data, repeatAfter)

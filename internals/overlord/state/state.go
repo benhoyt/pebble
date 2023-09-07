@@ -92,7 +92,6 @@ type State struct {
 	data     customData
 	changes  map[string]*Change
 	tasks    map[string]*Task
-	warnings map[string]*Warning
 	notices  map[string]*Notice
 	noticeId int
 
@@ -111,7 +110,6 @@ func New(backend Backend) *State {
 		data:          make(customData),
 		changes:       make(map[string]*Change),
 		tasks:         make(map[string]*Task),
-		warnings:      make(map[string]*Warning),
 		notices:       make(map[string]*Notice),
 		noticeWaiters: make(map[int]noticeWaiter),
 		modified:      true,
@@ -149,11 +147,10 @@ func (s *State) unlock() {
 }
 
 type marshalledState struct {
-	Data     map[string]*json.RawMessage `json:"data"`
-	Changes  map[string]*Change          `json:"changes"`
-	Tasks    map[string]*Task            `json:"tasks"`
-	Warnings []*Warning                  `json:"warnings,omitempty"`
-	Notices  []*Notice                   `json:"notices,omitempty"`
+	Data    map[string]*json.RawMessage `json:"data"`
+	Changes map[string]*Change          `json:"changes"`
+	Tasks   map[string]*Task            `json:"tasks"`
+	Notices []*Notice                   `json:"notices,omitempty"`
 
 	LastChangeId int `json:"last-change-id"`
 	LastTaskId   int `json:"last-task-id"`
@@ -164,11 +161,10 @@ type marshalledState struct {
 func (s *State) MarshalJSON() ([]byte, error) {
 	s.reading()
 	return json.Marshal(marshalledState{
-		Data:     s.data,
-		Changes:  s.changes,
-		Tasks:    s.tasks,
-		Warnings: s.flattenWarnings(),
-		Notices:  s.flattenNotices(NoticeFilters{}),
+		Data:    s.data,
+		Changes: s.changes,
+		Tasks:   s.tasks,
+		Notices: s.flattenNotices(NoticeFilters{}),
 
 		LastTaskId:   s.lastTaskId,
 		LastChangeId: s.lastChangeId,
@@ -187,7 +183,6 @@ func (s *State) UnmarshalJSON(data []byte) error {
 	s.data = unmarshalled.Data
 	s.changes = unmarshalled.Changes
 	s.tasks = unmarshalled.Tasks
-	s.unflattenWarnings(unmarshalled.Warnings)
 	s.unflattenNotices(unmarshalled.Notices)
 	s.lastChangeId = unmarshalled.LastChangeId
 	s.lastTaskId = unmarshalled.LastTaskId
@@ -394,12 +389,6 @@ func (s *State) Prune(pruneWait, abortWait time.Duration, maxReadyChanges int) {
 			break
 		}
 		readyChangesCount++
-	}
-
-	for k, w := range s.warnings {
-		if w.ExpiredBefore(now) {
-			delete(s.warnings, k)
-		}
 	}
 
 	for k, n := range s.notices {

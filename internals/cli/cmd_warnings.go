@@ -92,7 +92,15 @@ func (cmd *cmdWarnings) Execute(args []string) error {
 	}
 	now := time.Now()
 
-	warnings, err := cmd.client.Warnings(client.WarningsOptions{All: cmd.All})
+	options := client.NoticesOptions{Type: client.NoticeWarning}
+	if !cmd.All {
+		after, err := lastWarningTimestamp()
+		if err != nil {
+			return err
+		}
+		options.After = after
+	}
+	warnings, err := cmd.client.Notices(&options)
 	if err != nil {
 		return err
 	}
@@ -122,13 +130,14 @@ func (cmd *cmdWarnings) Execute(args []string) error {
 			fmt.Fprintln(w, "---")
 		}
 		if cmd.Verbose {
-			fmt.Fprintf(w, "first-occurrence:\t%s\n", cmd.fmtTime(warning.FirstAdded))
+			fmt.Fprintf(w, "first-occurrence:\t%s\n", cmd.fmtTime(warning.FirstOccurred))
 		}
-		fmt.Fprintf(w, "last-occurrence:\t%s\n", cmd.fmtTime(warning.LastAdded))
+		fmt.Fprintf(w, "last-occurrence:\t%s\n", cmd.fmtTime(warning.LastOccurred))
 		if cmd.Verbose {
+			// TODO: is this correct now?
 			lastShown := esc.dash
-			if !warning.LastShown.IsZero() {
-				lastShown = cmd.fmtTime(warning.LastShown)
+			if !warning.LastRepeated.IsZero() {
+				lastShown = cmd.fmtTime(warning.LastRepeated)
 			}
 			fmt.Fprintf(w, "acknowledged:\t%s\n", lastShown)
 			// TODO: cmd.fmtDuration() using timeutil.HumanDuration
@@ -136,7 +145,7 @@ func (cmd *cmdWarnings) Execute(args []string) error {
 			fmt.Fprintf(w, "expires-after:\t%s\n", quantity.FormatDuration(warning.ExpireAfter.Seconds()))
 		}
 		fmt.Fprintln(w, "warning: |")
-		writeWarning(w, warning.Message, termWidth)
+		writeWarning(w, warning.Key, termWidth)
 		w.Flush()
 	}
 
@@ -166,12 +175,8 @@ func (cmd *cmdOkay) Execute(args []string) error {
 		return ErrExtraArgs
 	}
 
-	last, err := lastWarningTimestamp()
-	if err != nil {
-		return err
-	}
-
-	return cmd.client.Okay(last)
+	// TODO: update to do this client-side
+	return nil
 }
 
 const warnFileEnvKey = "PEBBLE_LAST_WARNING_TIMESTAMP_FILENAME"

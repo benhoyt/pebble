@@ -34,11 +34,6 @@ var API = []*Command{{
 	GuestOK: true,
 	GET:     v1Health,
 }, {
-	Path:   "/v1/warnings",
-	UserOK: true,
-	GET:    v1GetWarnings,
-	POST:   v1AckWarnings,
-}, {
 	Path:   "/v1/changes",
 	UserOK: true,
 	GET:    v1GetChanges,
@@ -106,10 +101,7 @@ var API = []*Command{{
 }}
 
 var (
-	stateOkayWarnings    = (*state.State).OkayWarnings
-	stateAllWarnings     = (*state.State).AllWarnings
-	statePendingWarnings = (*state.State).PendingWarnings
-	stateEnsureBefore    = (*state.State).EnsureBefore
+	stateEnsureBefore = (*state.State).EnsureBefore
 
 	overlordServiceManager = (*overlord.Overlord).ServiceManager
 
