@@ -291,7 +291,19 @@ func (s *State) NewChange(kind, summary string) *Change {
 	id := strconv.Itoa(s.lastChangeId)
 	chg := newChange(s, id, kind, summary)
 	s.changes[id] = chg
+	logger.Noticef("TODO initial change-update for change %q (status %s)", id, chg.Status())
+	s.addChangeUpdate(id, kind)
 	return chg
+}
+
+func (s *State) addChangeUpdate(id, kind string) {
+	const repeatAfter = time.Duration(1) // repeat immediately (1ns)
+
+	data := map[string]string{
+		"id":   id,
+		"kind": kind,
+	}
+	s.AddNotice(NoticeChangeUpdate, id, data, repeatAfter)
 }
 
 // NewLane creates a new lane in the state.

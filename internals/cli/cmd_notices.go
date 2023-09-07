@@ -116,7 +116,7 @@ func (cmd *cmdNotices) Execute(args []string) error {
 	writer := tabWriter()
 	defer writer.Flush()
 
-	fmt.Fprintln(writer, "ID\tType\tKey\tFirst\tLast\tRepeated\tOccurrences")
+	fmt.Fprintln(writer, "ID\tType\tKey\tFirst\tLast\tRepeated\tOccurrences\tTODO")
 
 	for _, notice := range notices {
 		key := notice.Key
@@ -124,14 +124,29 @@ func (cmd *cmdNotices) Execute(args []string) error {
 			// Truncate to 32 bytes with ellipsis in the middle
 			key = key[:14] + "..." + key[len(key)-15:]
 		}
-		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\t%s\t%d\n",
+		details := ""
+		if notice.LastData != nil {
+			details = fmt.Sprint(notice.LastData)
+		}
+		if notice.Type == client.NoticeChangeUpdate {
+			change, err := cmd.client.Change(notice.Key)
+			if err != nil {
+				return fmt.Errorf("cannot fetch change %q: %w", notice.Key, err)
+			}
+			if details != "" {
+				details += " "
+			}
+			details += change.Status + " - " + change.Summary
+		}
+		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\n",
 			notice.ID,
 			notice.Type,
 			key,
 			cmd.fmtTime(notice.FirstOccurred),
 			cmd.fmtTime(notice.LastOccurred),
 			cmd.fmtTime(notice.LastRepeated),
-			notice.Occurrences)
+			notice.Occurrences,
+			details)
 	}
 
 	state.LastListed = notices[len(notices)-1].LastRepeated

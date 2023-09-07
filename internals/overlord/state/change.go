@@ -25,6 +25,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/canonical/pebble/internals/logger"
 )
 
 // Status is used for status values for changes and tasks.
@@ -300,6 +302,10 @@ func (c *Change) Status() Status {
 // SetStatus sets the change status, overriding the default behavior (see Status method).
 func (c *Change) SetStatus(s Status) {
 	c.state.writing()
+	logger.Noticef("TODO updated change-update for change %q, old=%s, new=%s", c.id, c.status, s)
+	if c.status != s {
+		c.state.addChangeUpdate(c.id, c.kind)
+	}
 	c.status = s
 	if s.Ready() {
 		c.markReady()
@@ -307,6 +313,7 @@ func (c *Change) SetStatus(s Status) {
 }
 
 func (c *Change) markReady() {
+	logger.Noticef("TODO markReady change %q status=%s", c.id, c.status)
 	select {
 	case <-c.ready:
 	default:
@@ -325,6 +332,7 @@ func (c *Change) Ready() <-chan struct{} {
 // taskStatusChanged is called by tasks when their status is changed,
 // to give the opportunity for the change to close its ready channel.
 func (c *Change) taskStatusChanged(t *Task, old, new Status) {
+	logger.Noticef("TODO taskStatusChanged change %q (%s), old=%s new=%s", c.id, c.status, old, new)
 	if old.Ready() == new.Ready() {
 		return
 	}
@@ -341,6 +349,9 @@ func (c *Change) taskStatusChanged(t *Task, old, new Status) {
 		panic(fmt.Errorf("change %s unexpectedly became unready (%s)", c.ID(), c.Status()))
 	}
 	c.markReady()
+
+	// TODO: should this be finer-grained? need to store old change status and see if it's changed?
+	c.state.addChangeUpdate(c.id, c.kind)
 }
 
 // IsClean returns whether all tasks in the change have been cleaned. See SetClean.
