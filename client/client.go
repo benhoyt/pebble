@@ -116,6 +116,8 @@ type Client struct {
 	warningTimestamp time.Time
 
 	getWebsocket getWebsocketFunc
+	transport    *http.Transport
+	decodeHook   DecodeHookFunc
 }
 
 type getWebsocketFunc func(url string) (clientWebsocket, error)
@@ -159,8 +161,13 @@ func New(config *Config) (*Client, error) {
 	client.getWebsocket = func(url string) (clientWebsocket, error) {
 		return getWebsocket(transport, url)
 	}
+	client.transport = transport
 
 	return client, nil
+}
+
+func (client *Client) Transport() *http.Transport {
+	return client.transport
 }
 
 func (client *Client) getTaskWebsocket(taskID, websocketID string) (clientWebsocket, error) {
@@ -304,8 +311,21 @@ func (client *Client) do(method, path string, query url.Values, headers map[stri
 	}
 	defer rsp.Body.Close()
 
+	var responseBody io.Reader = rsp.Body
+	if client.decodeHook != nil {
+		bodyBytes, err := io.ReadAll(responseBody)
+		if err != nil {
+			return err
+		}
+		err = client.decodeHook(bodyBytes, &RequestOptions{Method: method, Path: path /* TODO */})
+		if err != nil {
+			return err
+		}
+		responseBody = bytes.NewReader(bodyBytes)
+	}
+
 	if v != nil {
-		if err := decodeInto(rsp.Body, v); err != nil {
+		if err := decodeInto(responseBody, v); err != nil {
 			return err
 		}
 	}
@@ -514,4 +534,47 @@ func (client *Client) DebugGet(action string, result interface{}, params map[str
 	}
 	_, err := client.doSync("GET", "/v1/debug", urlParams, nil, nil, &result)
 	return err
+}
+
+// RequestOptions allows setting up a specific request.
+type RequestOptions struct {
+	Method     string
+	Path       string
+	Query      url.Values
+	Headers    map[string]string
+	Body       io.Reader
+	Async      bool
+	ReturnBody bool
+}
+
+// RequestResponse defines a common response associated with requests.
+type RequestResponse struct {
+	StatusCode int
+	ChangeID   string
+	Body       io.ReadCloser
+}
+
+// NOTE: not the real implementation, just to get things to work at a basic level
+func (client *Client) Do(ctx context.Context, opts *RequestOptions, result interface{}) (*RequestResponse, error) {
+	if opts.ReturnBody {
+		panic("not yet implemented")
+	}
+	if opts.Async {
+		changeID, err := client.doAsync(opts.Method, opts.Path, opts.Query, opts.Headers, opts.Body)
+		if err != nil {
+			return nil, err
+		}
+		return &RequestResponse{ChangeID: changeID}, nil
+	}
+	_, err := client.doSync(opts.Method, opts.Path, opts.Query, opts.Headers, opts.Body, result)
+	if err != nil {
+		return nil, err
+	}
+	return &RequestResponse{}, nil
+}
+
+type DecodeHookFunc func(data []byte, opts *RequestOptions) error
+
+func (client *Client) SetDecodeHook(hook DecodeHookFunc) {
+	client.decodeHook = hook
 }
