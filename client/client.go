@@ -116,6 +116,8 @@ type Client struct {
 	warningTimestamp time.Time
 
 	getWebsocket getWebsocketFunc
+	transport    *http.Transport
+	decodeHook   DecodeHookFunc
 }
 
 type getWebsocketFunc func(url string) (clientWebsocket, error)
@@ -159,8 +161,13 @@ func New(config *Config) (*Client, error) {
 	client.getWebsocket = func(url string) (clientWebsocket, error) {
 		return getWebsocket(transport, url)
 	}
+	client.transport = transport
 
 	return client, nil
+}
+
+func (client *Client) Transport() *http.Transport {
+	return client.transport
 }
 
 func (client *Client) getTaskWebsocket(taskID, websocketID string) (clientWebsocket, error) {
@@ -304,8 +311,21 @@ func (client *Client) do(method, path string, query url.Values, headers map[stri
 	}
 	defer rsp.Body.Close()
 
+	var responseBody io.Reader = rsp.Body
+	if client.decodeHook != nil {
+		bodyBytes, err := io.ReadAll(responseBody)
+		if err != nil {
+			return err
+		}
+		err = client.decodeHook(bodyBytes, method, path, &RequestOptions{ /* TODO */ })
+		if err != nil {
+			return err
+		}
+		responseBody = bytes.NewReader(bodyBytes)
+	}
+
 	if v != nil {
-		if err := decodeInto(rsp.Body, v); err != nil {
+		if err := decodeInto(responseBody, v); err != nil {
 			return err
 		}
 	}
@@ -514,4 +534,38 @@ func (client *Client) DebugGet(action string, result interface{}, params map[str
 	}
 	_, err := client.doSync("GET", "/v1/debug", urlParams, nil, nil, &result)
 	return err
+}
+
+// RequestOptions provides options arguments for a request.
+type RequestOptions struct {
+	Query   url.Values
+	Headers map[string]string
+	Body    io.Reader
+}
+
+// NOTE: these are NOT the real implementation, just to get things to work at a basic level
+
+func (client *Client) DoSync(ctx context.Context, method, path string, opts *RequestOptions, result interface{}) error {
+	if opts == nil {
+		opts = &RequestOptions{}
+	}
+	_, err := client.doSync(method, path, opts.Query, opts.Headers, opts.Body, result)
+	return err
+}
+
+func (client *Client) DoAsync(ctx context.Context, method, path string, opts *RequestOptions) (changeID string, err error) {
+	if opts == nil {
+		opts = &RequestOptions{}
+	}
+	return client.doAsync(method, path, opts.Query, opts.Headers, opts.Body)
+}
+
+func (client *Client) DoRaw(ctx context.Context, method, path string, opts *RequestOptions) (io.ReadCloser, error) {
+	panic("not yet implemented")
+}
+
+type DecodeHookFunc func(data []byte, method, path string, opts *RequestOptions) error
+
+func (client *Client) SetDecodeHook(hook DecodeHookFunc) {
+	client.decodeHook = hook
 }
