@@ -317,7 +317,7 @@ func (client *Client) do(method, path string, query url.Values, headers map[stri
 		if err != nil {
 			return err
 		}
-		err = client.decodeHook(bodyBytes, &RequestOptions{Method: method, Path: path /* TODO */})
+		err = client.decodeHook(bodyBytes, method, path, &RequestOptions{ /* TODO */ })
 		if err != nil {
 			return err
 		}
@@ -536,44 +536,35 @@ func (client *Client) DebugGet(action string, result interface{}, params map[str
 	return err
 }
 
-// RequestOptions allows setting up a specific request.
+// RequestOptions provides options arguments for a request.
 type RequestOptions struct {
-	Method     string
-	Path       string
-	Query      url.Values
-	Headers    map[string]string
-	Body       io.Reader
-	Async      bool
-	ReturnBody bool
+	Query   url.Values
+	Headers map[string]string
+	Body    io.Reader
 }
 
-// RequestResponse defines a common response associated with requests.
-type RequestResponse struct {
-	StatusCode int
-	ChangeID   string
-	Body       io.ReadCloser
+// NOTE: these are NOT the real implementation, just to get things to work at a basic level
+
+func (client *Client) DoSync(ctx context.Context, method, path string, opts *RequestOptions, result interface{}) error {
+	if opts == nil {
+		opts = &RequestOptions{}
+	}
+	_, err := client.doSync(method, path, opts.Query, opts.Headers, opts.Body, result)
+	return err
 }
 
-// NOTE: not the real implementation, just to get things to work at a basic level
-func (client *Client) Do(ctx context.Context, opts *RequestOptions, result interface{}) (*RequestResponse, error) {
-	if opts.ReturnBody {
-		panic("not yet implemented")
+func (client *Client) DoAsync(ctx context.Context, method, path string, opts *RequestOptions) (changeID string, err error) {
+	if opts == nil {
+		opts = &RequestOptions{}
 	}
-	if opts.Async {
-		changeID, err := client.doAsync(opts.Method, opts.Path, opts.Query, opts.Headers, opts.Body)
-		if err != nil {
-			return nil, err
-		}
-		return &RequestResponse{ChangeID: changeID}, nil
-	}
-	_, err := client.doSync(opts.Method, opts.Path, opts.Query, opts.Headers, opts.Body, result)
-	if err != nil {
-		return nil, err
-	}
-	return &RequestResponse{}, nil
+	return client.doAsync(method, path, opts.Query, opts.Headers, opts.Body)
 }
 
-type DecodeHookFunc func(data []byte, opts *RequestOptions) error
+func (client *Client) DoRaw(ctx context.Context, method, path string, opts *RequestOptions) (io.ReadCloser, error) {
+	panic("not yet implemented")
+}
+
+type DecodeHookFunc func(data []byte, method, path string, opts *RequestOptions) error
 
 func (client *Client) SetDecodeHook(hook DecodeHookFunc) {
 	client.decodeHook = hook

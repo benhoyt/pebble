@@ -46,9 +46,9 @@ func NewMyClient(pebble *client.Client) *MyClient {
 	return c
 }
 
-func (c *MyClient) decodeHook(data []byte, opts *client.RequestOptions) error {
+func (c *MyClient) decodeHook(data []byte, method, path string, opts *client.RequestOptions) error {
 	// Demonstrate use of opts: only do custom decode on v1 requests.
-	if !strings.HasPrefix(opts.Path, "/v1/") {
+	if !strings.HasPrefix(path, "/v1/") {
 		return nil
 	}
 	var frame struct {
@@ -66,10 +66,7 @@ func (c *MyClient) decodeHook(data []byte, opts *client.RequestOptions) error {
 
 func (c *MyClient) UpperServices() ([]UpperServiceInfo, error) {
 	var infos []UpperServiceInfo
-	_, err := c.pebble.Do(context.Background(), &client.RequestOptions{
-		Method: "GET",
-		Path:   "/v1/services",
-	}, &infos)
+	err := c.pebble.DoSync(context.Background(), "GET", "/v1/services", nil, &infos)
 	if err != nil {
 		return nil, err
 	}
