@@ -45,6 +45,7 @@ type resp struct {
 	WarningTimestamp *time.Time   `json:"warning-timestamp,omitempty"`
 	WarningCount     int          `json:"warning-count,omitempty"`
 	Maintenance      *errorResult `json:"maintenance,omitempty"`
+	ServerVersion    string       `json:"server-version"`
 }
 
 type respJSON struct {
@@ -56,6 +57,7 @@ type respJSON struct {
 	WarningTimestamp *time.Time   `json:"warning-timestamp,omitempty"`
 	WarningCount     int          `json:"warning-count,omitempty"`
 	Maintenance      *errorResult `json:"maintenance,omitempty"`
+	ServerVersion    string       `json:"server-version"`
 }
 
 func (r *resp) transmitMaintenance(kind errorKind, message string) {
@@ -86,6 +88,7 @@ func (r *resp) MarshalJSON() ([]byte, error) {
 		WarningTimestamp: r.WarningTimestamp,
 		WarningCount:     r.WarningCount,
 		Maintenance:      r.Maintenance,
+		ServerVersion:    r.ServerVersion,
 	})
 }
 
@@ -144,9 +147,10 @@ func SyncResponse(result interface{}) Response {
 	}
 
 	return &resp{
-		Type:   ResponseTypeSync,
-		Status: 200,
-		Result: result,
+		Type:          ResponseTypeSync,
+		Status:        200,
+		Result:        result,
+		ServerVersion: "v1.2.3",
 	}
 }
 
