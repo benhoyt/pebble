@@ -149,6 +149,8 @@ type Config struct {
 
 	// UserAgent is the User-Agent header sent to the Pebble daemon.
 	UserAgent string
+
+	Requester Requester
 }
 
 // A Client knows how to talk to the Pebble daemon.
@@ -181,14 +183,19 @@ func New(config *Config) (*Client, error) {
 	}
 
 	client := &Client{}
-	requester, err := NewDefaultRequester(client, &DefaultRequesterConfig{
-		Socket:           config.Socket,
-		BaseURL:          config.BaseURL,
-		DisableKeepAlive: config.DisableKeepAlive,
-		UserAgent:        config.UserAgent,
-	})
-	if err != nil {
-		return nil, err
+
+	requester := config.Requester
+	if requester == nil {
+		var err error
+		requester, err = NewDefaultRequester(client, &DefaultRequesterConfig{
+			Socket:           config.Socket,
+			BaseURL:          config.BaseURL,
+			DisableKeepAlive: config.DisableKeepAlive,
+			UserAgent:        config.UserAgent,
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	client.requester = requester
