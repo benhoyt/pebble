@@ -71,6 +71,8 @@ type warningsAction struct {
 
 // Okay asks the server to silence the warnings that would have been returned by
 // Warnings at the given time.
+//
+// Deprecated: Warnings are now notices and acknowledged client-side.
 func (client *Client) Okay(t time.Time) error {
 	var body bytes.Buffer
 	var op = warningsAction{Action: "okay", Timestamp: t}

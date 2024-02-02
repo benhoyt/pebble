@@ -73,6 +73,7 @@ func (cmd *cmdWarnings) Execute(args []string) error {
 	}
 	now := time.Now()
 
+	// TODO: use notices and CLI state
 	warnings, err := cmd.client.Warnings(client.WarningsOptions{All: cmd.All})
 	if err != nil {
 		return err

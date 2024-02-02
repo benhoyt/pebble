@@ -72,6 +72,7 @@ func (cmd *cmdOkay) Execute(args []string) error {
 		}
 	}
 
+	// TODO: use CLI state instead
 	last, err := lastWarningTimestamp()
 	if err != nil {
 		return err

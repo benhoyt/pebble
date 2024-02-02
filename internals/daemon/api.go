@@ -106,8 +106,6 @@ var API = []*Command{{
 }}
 
 var (
-	stateOkayWarnings    = (*state.State).OkayWarnings
-	stateAllWarnings     = (*state.State).AllWarnings
 	statePendingWarnings = (*state.State).PendingWarnings
 	stateEnsureBefore    = (*state.State).EnsureBefore
 

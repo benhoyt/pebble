@@ -21,11 +21,15 @@ import (
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/canonical/pebble/internals/logger"
 )
 
 const (
 	// defaultNoticeExpireAfter is the default expiry time for notices.
 	defaultNoticeExpireAfter = 7 * 24 * time.Hour
+
+	defaultWarningRepeatAfter = 24 * time.Hour
 )
 
 // Notice represents an aggregated notice. The combination of type and key is unique.
@@ -180,6 +184,31 @@ func (n *Notice) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// Warning is only for backwards-compatibility in the /v1/warnings API.
+type Warning struct {
+	Message     string     `json:"message"`
+	FirstAdded  time.Time  `json:"first-added"`
+	LastAdded   time.Time  `json:"last-added"`
+	LastShown   *time.Time `json:"last-shown,omitempty"`
+	ExpireAfter string     `json:"expire-after,omitempty"`
+	RepeatAfter string     `json:"repeat-after,omitempty"`
+}
+
+func NewWarningFromNotice(n *Notice) (*Warning, error) {
+	if n.noticeType != WarningNotice {
+		return nil, fmt.Errorf(`expected notice type "warning", got %q`, n.noticeType)
+	}
+	warning := &Warning{
+		Message:     n.key,
+		FirstAdded:  n.firstOccurred,
+		LastAdded:   n.lastOccurred,
+		LastShown:   nil, // the server doesn't track this anymore
+		ExpireAfter: n.expireAfter.String(),
+		RepeatAfter: n.repeatAfter.String(),
+	}
+	return warning, nil
+}
+
 type NoticeType string
 
 const (
@@ -273,6 +302,22 @@ func (s *State) AddNotice(userID *uint32, noticeType NoticeType, key string, opt
 	}
 
 	return notice.id, nil
+}
+
+// Warnf records a warning notice: if it's the first warning with this message
+// it'll be added, otherwise the existing one will be updated.
+func (s *State) Warnf(template string, args ...any) {
+	message := template
+	if len(args) > 0 {
+		message = fmt.Sprintf(template, args...)
+	}
+	// TODO: need to adjust the expire-after to 28 days for warnings, like snapd?
+	_, err := s.AddNotice(nil, WarningNotice, message, &AddNoticeOptions{
+		RepeatAfter: defaultWarningRepeatAfter,
+	})
+	if err != nil {
+		logger.Panicf("internal error, please report: %v", err)
+	}
 }
 
 func validateNotice(noticeType NoticeType, key string, options *AddNoticeOptions) error {
@@ -454,4 +499,32 @@ func contextAfterFunc(ctx context.Context, f func()) func() {
 		close(stopCh)
 	}
 	return stop
+}
+
+// PendingWarnings returns the list of warnings to show the user, sorted by
+// lastOccurred, and a timestamp than can be used to refer to these warnings.
+//
+// Warnings to show to the user are those that have not been shown before,
+// or that have been shown earlier than repeatAfter ago.
+func (s *State) PendingWarnings() []*Notice {
+	notices := s.Notices(&NoticeFilter{
+		Types: []NoticeType{WarningNotice},
+		// TODO: is this the same thing as pending warnings were?
+		// TODO: no, we need the last shown time...
+		After: time.Now().UTC(),
+	})
+	// TODO: sort by lastOccurred? (old code sorted byLastAdded)
+	return notices
+}
+
+// WarningsSummary returns the number of warnings that are ready to be
+// shown to the user, and the timestamp of the most recently added
+// warning (useful for silencing the warning alerts, and OKing the
+// returned warnings).
+func (s *State) WarningsSummary() (int, time.Time) {
+	notices := s.PendingWarnings()
+	if len(notices) == 0 {
+		return 0, time.Time{}
+	}
+	return len(notices), notices[len(notices)-1].lastRepeated
 }

@@ -15,32 +15,14 @@
 package daemon
 
 import (
-	"encoding/json"
 	"net/http"
-	"time"
 
 	"github.com/canonical/pebble/internals/overlord/state"
 )
 
 func v1AckWarnings(c *Command, r *http.Request, _ *UserState) Response {
-	defer r.Body.Close()
-	var op struct {
-		Action    string    `json:"action"`
-		Timestamp time.Time `json:"timestamp"`
-	}
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&op); err != nil {
-		return statusBadRequest("cannot decode request body into warnings operation: %v", err)
-	}
-	if op.Action != "okay" {
-		return statusBadRequest("unknown warning action %q", op.Action)
-	}
-	st := c.d.overlord.State()
-	st.Lock()
-	defer st.Unlock()
-	n := stateOkayWarnings(st, op.Timestamp)
-
-	return SyncResponse(n)
+	// Do nothing; warnings are now notices and acknowledged client-side.
+	return SyncResponse(0)
 }
 
 func v1GetWarnings(c *Command, r *http.Request, _ *UserState) Response {
@@ -60,16 +42,23 @@ func v1GetWarnings(c *Command, r *http.Request, _ *UserState) Response {
 	st.Lock()
 	defer st.Unlock()
 
-	var ws []*state.Warning
+	var notices []*state.Notice
 	if all {
-		ws = stateAllWarnings(st)
+		notices = st.Notices(&state.NoticeFilter{
+			Types: []state.NoticeType{state.WarningNotice},
+		})
 	} else {
-		ws, _ = statePendingWarnings(st)
-	}
-	if len(ws) == 0 {
-		// no need to confuse the issue
-		return SyncResponse([]state.Warning{})
+		notices = statePendingWarnings(st)
 	}
 
-	return SyncResponse(ws)
+	// Convert notices to legacy warning type.
+	warnings := make([]*state.Warning, len(notices))
+	for i, notice := range notices {
+		warning, err := state.NewWarningFromNotice(notice)
+		if err != nil {
+			return statusInternalError("%s", err)
+		}
+		warnings[i] = warning
+	}
+	return SyncResponse(warnings)
 }

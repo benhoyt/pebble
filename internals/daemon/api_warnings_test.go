@@ -19,7 +19,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"time"
 
 	"gopkg.in/check.v1"
 
@@ -29,15 +28,12 @@ import (
 func (s *apiSuite) testWarnings(c *check.C, all bool, body io.Reader) (calls string, result interface{}) {
 	s.daemon(c)
 
-	oldOK := stateOkayWarnings
-	oldAll := stateAllWarnings
 	oldPending := statePendingWarnings
-	stateOkayWarnings = func(*state.State, time.Time) int { calls += "ok"; return 0 }
-	stateAllWarnings = func(*state.State) []*state.Warning { calls += "all"; return nil }
-	statePendingWarnings = func(*state.State) ([]*state.Warning, time.Time) { calls += "show"; return nil, time.Time{} }
+	statePendingWarnings = func(*state.State) []*state.Notice {
+		calls += "show"
+		return nil
+	}
 	defer func() {
-		stateOkayWarnings = oldOK
-		stateAllWarnings = oldAll
 		statePendingWarnings = oldPending
 	}()
 
@@ -67,18 +63,18 @@ func (s *apiSuite) testWarnings(c *check.C, all bool, body io.Reader) (calls str
 
 func (s *apiSuite) TestAllWarnings(c *check.C) {
 	calls, result := s.testWarnings(c, true, nil)
-	c.Check(calls, check.Equals, "all")
-	c.Check(result, check.DeepEquals, []state.Warning{})
+	c.Check(calls, check.Equals, "")
+	c.Check(result, check.DeepEquals, []*state.Warning{})
 }
 
 func (s *apiSuite) TestSomeWarnings(c *check.C) {
 	calls, result := s.testWarnings(c, false, nil)
 	c.Check(calls, check.Equals, "show")
-	c.Check(result, check.DeepEquals, []state.Warning{})
+	c.Check(result, check.DeepEquals, []*state.Warning{})
 }
 
 func (s *apiSuite) TestAckWarnings(c *check.C) {
 	calls, result := s.testWarnings(c, false, bytes.NewReader([]byte(`{"action": "okay", "timestamp": "2006-01-02T15:04:05Z"}`)))
-	c.Check(calls, check.Equals, "ok")
+	c.Check(calls, check.Equals, "")
 	c.Check(result, check.DeepEquals, 0)
 }

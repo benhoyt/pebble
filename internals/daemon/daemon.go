@@ -230,11 +230,8 @@ func (c *Command) Daemon() *Daemon {
 func (c *Command) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	st := c.d.state
 	st.Lock()
-	user, err := userFromRequest(st, r)
-	if err != nil {
-		statusForbidden("forbidden").ServeHTTP(w, r)
-		return
-	}
+	// TODO Look at the error and fail if there's an attempt to authenticate with invalid data.
+	user, _ := userFromRequest(st, r)
 	st.Unlock()
 
 	// check if we are in degradedMode
