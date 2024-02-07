@@ -152,7 +152,7 @@ func (s *State) writing() {
 
 func (s *State) unlock() {
 	atomic.AddInt32(&s.muC, -1)
-	s.mu.Unlock()
+	s.mu.Unlock() // non-deferred Unlock okay
 }
 
 type marshalledState struct {
@@ -232,7 +232,7 @@ var (
 // in turn return a function to relock it.
 func (s *State) Unlocker() (unlock func() (relock func())) {
 	return func() func() {
-		s.Unlock()
+		s.Unlock() // non-deferred Unlock okay
 		return s.Lock
 	}
 }

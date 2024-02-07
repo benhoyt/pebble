@@ -81,9 +81,11 @@ func (m *StandbyOpinions) Start() {
 		timer := time.NewTimer(wait)
 		for {
 			if m.CanStandby() {
-				m.state.Lock()
-				restart.Request(m.state, restart.RestartSocket)
-				m.state.Unlock()
+				func() {
+					m.state.Lock()
+					defer m.state.Unlock()
+					restart.Request(m.state, restart.RestartSocket)
+				}()
 			}
 			select {
 			case <-timer.C:

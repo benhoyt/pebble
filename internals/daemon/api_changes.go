@@ -186,9 +186,14 @@ func v1GetChange(c *Command, r *http.Request, _ *UserState) Response {
 func v1GetChangeWait(c *Command, r *http.Request, _ *UserState) Response {
 	changeID := muxVars(r)["id"]
 	st := c.d.overlord.State()
-	st.Lock()
-	change := st.Change(changeID)
-	st.Unlock()
+
+	var change *state.Change
+	func() {
+		st.Lock()
+		defer st.Unlock()
+		change = st.Change(changeID)
+	}()
+
 	if change == nil {
 		return statusNotFound("cannot find change with id %q", changeID)
 	}

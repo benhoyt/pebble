@@ -81,7 +81,7 @@ func (m *CommandManager) waitExecution(taskID string, stop <-chan struct{}) *exe
 
 		m.executionsMutex.Lock()
 		e := m.executions[taskID]
-		m.executionsMutex.Unlock()
+		m.executionsMutex.Unlock() // non-deferred Unlock okay
 		if e != nil {
 			return e
 		}

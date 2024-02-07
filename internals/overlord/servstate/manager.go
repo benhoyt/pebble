@@ -230,10 +230,11 @@ func (m *ServiceManager) acquirePlan() (release func(), err error) {
 	if m.plan == nil {
 		err := m.reloadPlan()
 		if err != nil {
-			m.planLock.Unlock()
+			m.planLock.Unlock() // TODO: should probably catch panic in reloadPlan
 			return nil, err
 		}
 	}
+	// TODO: is this some kind of race?
 	released := false
 	release = func() {
 		if !released {

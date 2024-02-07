@@ -107,9 +107,13 @@ type serviceData struct {
 }
 
 func (m *ServiceManager) doStart(task *state.Task, tomb *tomb.Tomb) error {
-	m.state.Lock()
-	request, err := TaskServiceRequest(task)
-	m.state.Unlock()
+	var request *ServiceRequest
+	var err error
+	func() {
+		m.state.Lock()
+		defer m.state.Unlock()
+		request, err = TaskServiceRequest(task)
+	}()
 	if err != nil {
 		return err
 	}
@@ -213,9 +217,13 @@ func taskLogf(task *state.Task, format string, args ...interface{}) {
 }
 
 func (m *ServiceManager) doStop(task *state.Task, tomb *tomb.Tomb) error {
-	m.state.Lock()
-	request, err := TaskServiceRequest(task)
-	m.state.Unlock()
+	var request *ServiceRequest
+	var err error
+	func() {
+		m.state.Lock()
+		defer m.state.Unlock()
+		request, err = TaskServiceRequest(task)
+	}()
 	if err != nil {
 		return err
 	}

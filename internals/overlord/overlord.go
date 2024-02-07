@@ -236,10 +236,6 @@ func loadState(statePath string, restartHandler restart.Handler, backend state.B
 	}
 
 	timings.Stop()
-	// TODO Implement function to save timings.
-	//s.Lock()
-	//perfTimings.Save(s)
-	//s.Unlock()
 
 	err = initRestart(s, curBootID, restartHandler)
 	if err != nil {
@@ -266,11 +262,14 @@ func (o *Overlord) StartUp() error {
 	}
 	o.startedUp = true
 
-	var err error
 	st := o.State()
-	st.Lock()
-	o.startOfOperationTime, err = o.StartOfOperationTime()
-	st.Unlock()
+
+	var err error
+	func() {
+		st.Lock()
+		defer st.Unlock()
+		o.startOfOperationTime, err = o.StartOfOperationTime()
+	}()
 	if err != nil {
 		return fmt.Errorf("cannot get start of operation time: %s", err)
 	}
@@ -337,9 +336,11 @@ func (o *Overlord) Loop() {
 			case <-o.ensureTimer.C:
 			case <-pruneC:
 				st := o.State()
-				st.Lock()
-				st.Prune(o.startOfOperationTime, pruneWait, abortWait, pruneMaxChanges)
-				st.Unlock()
+				func() {
+					st.Lock()
+					defer st.Unlock()
+					st.Prune(o.startOfOperationTime, pruneWait, abortWait, pruneMaxChanges)
+				}()
 			}
 		}
 	})
@@ -404,9 +405,13 @@ func (o *Overlord) settle(timeout time.Duration, beforeCleanups func()) error {
 			errs = append(errs, err)
 		}
 		o.stateEng.Wait()
-		o.ensureLock.Lock()
-		done = o.ensureNext.Equal(next)
-		o.ensureLock.Unlock()
+
+		func() {
+			o.ensureLock.Lock()
+			defer o.ensureLock.Unlock()
+			done = o.ensureNext.Equal(next)
+		}()
+
 		if done {
 			if beforeCleanups != nil {
 				beforeCleanups()
@@ -414,14 +419,16 @@ func (o *Overlord) settle(timeout time.Duration, beforeCleanups func()) error {
 			}
 			// we should wait also for cleanup handlers
 			st := o.State()
-			st.Lock()
-			for _, chg := range st.Changes() {
-				if chg.IsReady() && !chg.IsClean() {
-					done = false
-					break
+			func() {
+				st.Lock()
+				defer st.Unlock()
+				for _, chg := range st.Changes() {
+					if chg.IsReady() && !chg.IsClean() {
+						done = false
+						break
+					}
 				}
-			}
-			st.Unlock()
+			}()
 		}
 	}
 	if len(errs) != 0 {
@@ -544,7 +551,7 @@ func (mb fakeBackend) Checkpoint(data []byte) error {
 func (mb fakeBackend) EnsureBefore(d time.Duration) {
 	mb.o.ensureLock.Lock()
 	timer := mb.o.ensureTimer
-	mb.o.ensureLock.Unlock()
+	mb.o.ensureLock.Unlock() // non-deferred Unlock okay
 	if timer == nil {
 		return
 	}

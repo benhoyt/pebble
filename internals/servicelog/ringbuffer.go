@@ -329,12 +329,14 @@ func (rb *RingBuffer) signalIterators() {
 		case iter.nextChan <- true:
 		default:
 		}
-		iter.notifyLock.Lock()
-		select {
-		case iter.notifyChan <- true:
-		default:
-		}
-		iter.notifyLock.Unlock()
+		func() {
+			iter.notifyLock.Lock()
+			defer iter.notifyLock.Unlock()
+			select {
+			case iter.notifyChan <- true:
+			default:
+			}
+		}()
 	}
 }
 

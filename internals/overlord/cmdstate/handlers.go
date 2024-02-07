@@ -72,9 +72,13 @@ type execution struct {
 func (m *CommandManager) doExec(task *state.Task, tomb *tomb.Tomb) error {
 	var setup execSetup
 	st := task.State()
-	st.Lock()
-	err := task.Get("exec-setup", &setup)
-	st.Unlock()
+
+	var err error
+	func() {
+		st.Lock()
+		defer st.Unlock()
+		err = task.Get("exec-setup", &setup)
+	}()
 	if err != nil {
 		return fmt.Errorf("cannot get exec setup object for task %q: %v", task.ID(), err)
 	}
@@ -105,14 +109,16 @@ func (m *CommandManager) doExec(task *state.Task, tomb *tomb.Tomb) error {
 	}
 
 	// Store the execution object on the manager (for Connect).
-	m.executionsMutex.Lock()
-	m.executions[task.ID()] = e
-	m.executionsMutex.Unlock()
+	func() {
+		m.executionsMutex.Lock()
+		defer m.executionsMutex.Unlock()
+		m.executions[task.ID()] = e
+	}()
 	m.executionsCond.Broadcast() // signal that Connects can start happening
 	defer func() {
 		m.executionsMutex.Lock()
+		defer m.executionsMutex.Unlock()
 		delete(m.executions, task.ID())
-		m.executionsMutex.Unlock()
 	}()
 
 	// Run the command! Killing the tomb will terminate the command.
@@ -128,7 +134,7 @@ var websocketUpgrader = websocket.Upgrader{
 func (e *execution) connect(r *http.Request, w http.ResponseWriter, id string) error {
 	e.websocketsLock.Lock()
 	conn, ok := e.websockets[id]
-	e.websocketsLock.Unlock()
+	e.websocketsLock.Unlock() // non-deferred Unlock okay
 	if !ok {
 		return os.ErrNotExist
 	}

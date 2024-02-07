@@ -229,13 +229,11 @@ func (c *Command) Daemon() *Daemon {
 
 func (c *Command) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	st := c.d.state
-	st.Lock()
 	user, err := userFromRequest(st, r)
 	if err != nil {
 		statusForbidden("forbidden").ServeHTTP(w, r)
 		return
 	}
-	st.Unlock()
 
 	// check if we are in degradedMode
 	if c.d.degradedErr != nil && r.Method != "GET" {
@@ -273,9 +271,13 @@ func (c *Command) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if rsp, ok := rsp.(*resp); ok {
-		st.Lock()
-		_, rst := restart.Pending(st)
-		st.Unlock()
+		var rst restart.RestartType
+		func() {
+			st.Lock()
+			defer st.Unlock()
+			_, rst = restart.Pending(st)
+		}()
+
 		switch rst {
 		case restart.RestartSystem:
 			rsp.transmitMaintenance(errorKindSystemRestart, "system is restarting")
@@ -285,9 +287,14 @@ func (c *Command) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			rsp.transmitMaintenance(errorKindDaemonRestart, "daemon is stopping to wait for socket activation")
 		}
 		if rsp.Type != ResponseTypeError {
-			st.Lock()
-			count, stamp := st.WarningsSummary()
-			st.Unlock()
+			var count int
+			var stamp time.Time
+			func() {
+				st.Lock()
+				defer st.Unlock()
+				count, stamp = st.WarningsSummary()
+			}()
+
 			rsp.addWarningsToMeta(count, stamp)
 		}
 	}
@@ -538,7 +545,7 @@ func (d *Daemon) HandleRestart(t restart.RestartType) {
 		restart.RestartServiceFailure, restart.RestartCheckFailure:
 		d.mu.Lock()
 		d.requestedRestart = t
-		d.mu.Unlock()
+		d.mu.Unlock() // non-deferred Unlock okay
 	case restart.RestartSystem:
 		// try to schedule a fallback slow reboot already here,
 		// in case we get stuck shutting down
@@ -547,7 +554,7 @@ func (d *Daemon) HandleRestart(t restart.RestartType) {
 		}
 		d.mu.Lock()
 		d.requestedRestart = t
-		d.mu.Unlock()
+		d.mu.Unlock() // non-deferred Unlock okay
 	default:
 		logger.Noticef("Internal error: restart handler called with unknown restart type: %v", t)
 	}
@@ -586,7 +593,7 @@ func (d *Daemon) Stop(sigCh chan<- os.Signal) error {
 
 	d.mu.Lock()
 	requestedRestart := d.requestedRestart
-	d.mu.Unlock()
+	d.mu.Unlock() // non-deferred Unlock okay
 
 	d.standbyOpinions.Stop()
 
@@ -667,11 +674,15 @@ func (d *Daemon) stopRunningServices() error {
 	// One change to stop them all.
 	logger.Noticef("Stopping all running services.")
 	st := d.state
-	st.Lock()
-	chg := st.NewChange("stop", "Stop all running services")
-	chg.AddAll(taskSet)
-	st.EnsureBefore(0) // start operation right away
-	st.Unlock()
+
+	var chg *state.Change
+	func() {
+		st.Lock()
+		defer st.Unlock()
+		chg = st.NewChange("stop", "Stop all running services")
+		chg.AddAll(taskSet)
+		st.EnsureBefore(0) // start operation right away
+	}()
 
 	// Wait for a limited amount of time for them to stop.
 	select {

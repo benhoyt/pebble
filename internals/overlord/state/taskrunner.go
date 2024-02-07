@@ -500,9 +500,11 @@ func mustWait(t *Task) bool {
 func (r *TaskRunner) wait() {
 	for len(r.tombs) > 0 {
 		for _, t := range r.tombs {
-			r.mu.Unlock()
-			t.Wait()
-			r.mu.Lock()
+			func() {
+				r.mu.Unlock() // lock already held, Unlock then defer Lock
+				defer r.mu.Lock()
+				t.Wait()
+			}()
 			break
 		}
 	}
@@ -544,20 +546,24 @@ func (r *TaskRunner) StopKinds(kind ...string) {
 	var tombs []*tomb.Tomb
 	// Locks must be acquired in the same order everywhere:
 	// r.mu, r.state
-	r.state.Lock()
-	for tid, tb := range r.tombs {
-		task := r.state.Task(tid)
-		if task == nil || !kinds[task.Kind()] {
-			continue
+	func() {
+		r.state.Lock()
+		defer r.state.Unlock()
+		for tid, tb := range r.tombs {
+			task := r.state.Task(tid)
+			if task == nil || !kinds[task.Kind()] {
+				continue
+			}
+			tombs = append(tombs, tb)
+			tb.Kill(nil)
 		}
-		tombs = append(tombs, tb)
-		tb.Kill(nil)
-	}
-	r.state.Unlock()
+	}()
 
 	for _, tb := range tombs {
-		r.mu.Unlock()
-		tb.Wait()
-		r.mu.Lock()
+		func() {
+			r.mu.Unlock() // lock already held, Unlock then defer Lock
+			defer r.mu.Lock()
+			tb.Wait()
+		}()
 	}
 }

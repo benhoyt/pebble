@@ -75,13 +75,15 @@ func applySublevelPatches(level, firstSublevel int, s *state.State) error {
 // conventions required by the current patch level of the system.
 func Apply(s *state.State) error {
 	var stateLevel, stateSublevel int
-	s.Lock()
-	err := s.Get("patch-level", &stateLevel)
-	if err == nil || errors.Is(err, state.ErrNoState) {
-		err = s.Get("patch-sublevel", &stateSublevel)
-	}
-	s.Unlock()
-
+	var err error
+	func() {
+		s.Lock()
+		defer s.Unlock()
+		err = s.Get("patch-level", &stateLevel)
+		if err == nil || errors.Is(err, state.ErrNoState) {
+			err = s.Get("patch-sublevel", &stateSublevel)
+		}
+	}()
 	if err != nil && !errors.Is(err, state.ErrNoState) {
 		return err
 	}
@@ -98,8 +100,8 @@ func Apply(s *state.State) error {
 	// are re-applied if the user refreshes to a newer patch sublevel again.
 	if stateLevel == Level && stateSublevel > Sublevel {
 		s.Lock()
+		defer s.Unlock()
 		s.Set("patch-sublevel", Sublevel)
-		s.Unlock()
 		return nil
 	}
 
