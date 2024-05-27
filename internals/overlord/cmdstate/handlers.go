@@ -252,6 +252,19 @@ func (e *execution) do(ctx context.Context, task *state.Task) error {
 			// websocket and write to the PTY.
 			go func() {
 				<-wsutil.WebsocketRecvStream(master, ioConn)
+				// With only a small delay here (~100us) we consistently
+				// see a deadlock here.
+				//
+				// Would be interesting to see if we can repro the same problem in LXD
+				// by adding a time.Sleep(time.Second) or similar between these lines:
+				// https://github.com/canonical/lxd/blob/183b01ce0c694c93a30f2b49cd37d32a4db5cbe5/lxd-agent/exec.go#L493-L494
+				t0 := time.Now()
+				x := 0
+				for i := 0; i < 1_000_000; i++ {
+					x += i
+				}
+				elapsed := time.Since(t0)
+				logger.Noticef("TODO elapsed=%v", elapsed)
 				master.Close()
 			}()
 		} else {
@@ -379,18 +392,23 @@ func (e *execution) do(ctx context.Context, task *state.Task) error {
 	exitCode := -1
 	if err == nil {
 		// Send its PID to the control loop.
+		logger.Noticef("TODO a")
 		pidCh <- cmd.Process.Pid
+		logger.Noticef("TODO b")
 
 		// Wait for it to finish.
 		exitCode, err = reaper.WaitCommand(cmd)
+		logger.Noticef("TODO c")
 	}
 
 	// Close open files and channels.
+	logger.Noticef("TODO before closing beforeCloseres")
 	for _, closer := range beforeClosers {
 		_ = closer.Close()
 	}
 
 	// Close the control channel, if connected.
+	logger.Noticef("TODO after closing beforeCloseres")
 	controlConn := e.getWebsocket(wsControl)
 	if controlConn != nil {
 		_ = controlConn.Close()
@@ -400,9 +418,11 @@ func (e *execution) do(ctx context.Context, task *state.Task) error {
 
 	wgOutputSent.Wait()
 
+	logger.Noticef("TODO after wgOutputSent.Wait")
 	for _, closer := range afterClosers {
 		_ = closer.Close()
 	}
+	logger.Noticef("TODO after closing afterClosers")
 
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		setExitCode(task, -1)
