@@ -20,6 +20,7 @@ const (
 	maxRequestEntries          = 100
 	dialTimeout                = 10 * time.Second
 	canonicalPrivEnterpriseNum = 28978
+	sendBufSize                = 1024
 )
 
 // Syslog Priority values - see RFC 5424 6.2.1
@@ -105,6 +106,7 @@ func NewClient(options *ClientOptions) (*Client, error) {
 		labels:   make(map[string]string),
 	}
 	c.entries = c.buffer[:0]
+	c.sendBuf.Grow(sendBufSize)
 	return c, nil
 }
 
@@ -115,7 +117,7 @@ func (c *Client) SetLabels(serviceName string, labels map[string]string) {
 		delete(c.labels, serviceName)
 		return
 	}
-	var buf bytes.Buffer
+	var buf strings.Builder
 
 	if len(c.options.SDID) > 0 {
 		fmt.Fprintf(&buf, "[%s@%d", c.options.SDID, canonicalPrivEnterpriseNum)
@@ -207,6 +209,73 @@ func (c *Client) Close() error {
 	return err
 }
 
+// encodeEntry encodes a single log entry to sendBuf with no memory allocations.
+func (c *Client) encodeEntry(entry entryWithService) {
+	structuredData, ok := c.labels[entry.service]
+	if !ok {
+		structuredData = "-"
+	}
+	hostname := c.options.Hostname
+	if hostname == "" {
+		hostname = "-"
+	}
+
+	// Format: <length> <PRI>VERSION TIMESTAMP HOSTNAME APP-NAME PROCID MSGID STRUCTURED-DATA MSG
+	const prefix = "<13>1 " // priority 13 = 1*8+5 (facility user, priority notice), version 1
+	frameLength := len(prefix) + len(entry.Timestamp) + 1 + len(hostname) + 1 +
+		len(entry.service) + 5 + len(structuredData) + 1 + len(entry.Message)
+
+	// Octet framing as per RFC 5425: <length> <message>
+	lengthBuf := make([]byte, 0, 8) // fixed-length buffer to avoid allocations
+	lengthBuf = strconv.AppendInt(lengthBuf, int64(frameLength), 10)
+	c.sendBuf.Write(lengthBuf)
+	c.sendBuf.WriteByte(' ')
+
+	// Message format as per RFC 5424
+	c.sendBuf.WriteString(prefix)
+	c.sendBuf.WriteString(entry.Timestamp)
+	c.sendBuf.WriteByte(' ')
+	c.sendBuf.WriteString(hostname)
+	c.sendBuf.WriteByte(' ')
+	c.sendBuf.WriteString(entry.service)
+	c.sendBuf.WriteString(" - - ")
+	c.sendBuf.WriteString(structuredData)
+	c.sendBuf.WriteByte(' ')
+	c.sendBuf.WriteString(entry.Message)
+}
+
+func (c *Client) encodeEntryOld(entry entryWithService) {
+	structuredData, ok := c.labels[entry.service]
+	if !ok {
+		structuredData = "-"
+	}
+
+	defaultPriority := priorityVal(facilityUserLevelMessage, severityNotice)
+
+	// Build the message first to calculate length
+	var msgBuf bytes.Buffer
+	msgBuf.WriteByte('<')
+	// Convert priority to string without fmt.Sprint
+	priorityStr := strconv.Itoa(defaultPriority)
+	msgBuf.WriteString(priorityStr)
+	msgBuf.WriteString(">1 ")
+	msgBuf.WriteString(entry.Timestamp)
+	msgBuf.WriteByte(' ')
+	msgBuf.WriteString(c.options.Hostname)
+	msgBuf.WriteByte(' ')
+	msgBuf.WriteString(entry.service)
+	msgBuf.WriteString(" - - ")
+	msgBuf.WriteString(structuredData)
+	msgBuf.WriteByte(' ')
+	msgBuf.WriteString(entry.Message)
+
+	// Octet framing as per RFC 5425: <length> <message>
+	lengthStr := strconv.Itoa(msgBuf.Len())
+	c.sendBuf.WriteString(lengthStr)
+	c.sendBuf.WriteByte(' ')
+	c.sendBuf.Write(msgBuf.Bytes())
+}
+
 // Flush sends buffered logs to the syslog endpoint.
 func (c *Client) Flush(ctx context.Context) error {
 	if len(c.entries) == 0 {
@@ -220,35 +289,7 @@ func (c *Client) Flush(ctx context.Context) error {
 	c.sendBuf.Reset()
 
 	for _, entry := range c.entries {
-		structuredData, ok := c.labels[entry.service]
-		if !ok {
-			structuredData = "-"
-		}
-
-		defaultPriority := priorityVal(facilityUserLevelMessage, severityNotice)
-
-		// Build the message first to calculate length
-		var msgBuf bytes.Buffer
-		msgBuf.WriteByte('<')
-		// Convert priority to string without fmt.Sprint
-		priorityStr := strconv.Itoa(defaultPriority)
-		msgBuf.WriteString(priorityStr)
-		msgBuf.WriteString(">1 ")
-		msgBuf.WriteString(entry.Timestamp)
-		msgBuf.WriteByte(' ')
-		msgBuf.WriteString(c.options.Hostname)
-		msgBuf.WriteByte(' ')
-		msgBuf.WriteString(entry.service)
-		msgBuf.WriteString(" - - ")
-		msgBuf.WriteString(structuredData)
-		msgBuf.WriteByte(' ')
-		msgBuf.WriteString(entry.Message)
-
-		// Octet framing as per RFC 5425: <length> <message>
-		lengthStr := strconv.Itoa(msgBuf.Len())
-		c.sendBuf.WriteString(lengthStr)
-		c.sendBuf.WriteByte(' ')
-		c.sendBuf.Write(msgBuf.Bytes())
+		c.encodeEntry(entry)
 	}
 
 	_, err = io.Copy(c.conn, &c.sendBuf)
